@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Package Transport Depot</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <div class="app">
+      <main id="homeScreen" class="home-screen" aria-labelledby="appTitle">
+        <section class="command-center">
+          <h1 id="appTitle">Package Transport Depot</h1>
+
+          <div class="main-panel" aria-label="Selector de tablets">
+            <section class="tablet-row" aria-labelledby="rowT08">
+              <h2 id="rowT08">T08</h2>
+              <div class="button-grid button-grid--t08">
+                <button class="depot-button" type="button" data-experience="t08-1">
+                  <span>1</span>
+                </button>
+                <button class="depot-button" type="button" data-experience="t08-2">
+                  <span>2</span>
+                </button>
+                <button class="depot-button" type="button" data-experience="t08-3">
+                  <span>3</span>
+                </button>
+                <button class="depot-button" type="button" data-experience="t08-4">
+                  <span>4</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="tablet-row" aria-labelledby="rowT13">
+              <h2 id="rowT13">T13</h2>
+              <div class="button-grid button-grid--t13">
+                <button class="depot-button" type="button" data-experience="t13-1">
+                  <span>1</span>
+                </button>
+                <button class="depot-button" type="button" data-experience="t13-2">
+                  <span>2</span>
+                </button>
+                <button class="depot-button" type="button" data-experience="t13-3">
+                  <span>3</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="brightness-panel" aria-labelledby="brightnessTitle">
+              <div class="brightness-copy">
+                <h2 id="brightnessTitle">BRILLO</h2>
+                <p id="brightnessValue">100%</p>
+              </div>
+
+              <div class="brightness-controls">
+                <label class="select-shell" for="brightnessTarget">
+                  <span>VIDEO</span>
+                  <select id="brightnessTarget" name="brightnessTarget">
+                    <option value="t08-1">T08 1</option>
+                    <option value="t08-2">T08 2</option>
+                    <option value="t08-3">T08 3</option>
+                    <option value="t08-4">T08 4</option>
+                    <option value="t13-1">T13 1</option>
+                    <option value="t13-2">T13 2</option>
+                    <option value="t13-3">T13 3</option>
+                  </select>
+                </label>
+
+                <label class="range-shell" for="brightnessRange">
+                  <span>INTENSIDAD</span>
+                  <input id="brightnessRange" name="brightnessRange" type="range" min="0" max="100" value="100" step="1">
+                </label>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <main id="videoScreen" class="video-screen is-hidden" aria-live="polite">
+        <section id="videoFrame" class="video-frame" data-family="t08">
+          <video id="idleVideo" class="proto-video proto-video--idle is-current" muted playsinline loop preload="auto"></video>
+          <video id="activeVideo" class="proto-video proto-video--active" muted playsinline loop preload="auto"></video>
+          <div id="brightnessOverlay" class="brightness-overlay" aria-hidden="true"></div>
+
+          <button id="fullscreenButton" class="hotspot hotspot--fullscreen" type="button" aria-label="Pantalla completa"></button>
+          <button id="homeButton" class="hotspot hotspot--home" type="button" aria-label="Volver al inicio"></button>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
