@@ -564,21 +564,35 @@ h1 {
   height: 100%;
   object-fit: contain;
   background: #000;
-  opacity: 1;
+  opacity: 0;
   pointer-events: none;
   backface-visibility: hidden;
   transform: translateZ(0);
   will-change: transform;
 }
 
-.proto-video.is-current {
-  z-index: 2;
+.proto-video--idle {
+  z-index: 1;
   opacity: 1;
 }
 
-.proto-video.is-under {
-  z-index: 1;
+.proto-video--active {
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+
+.proto-video--active.is-current {
   opacity: 1;
+}
+
+.proto-video--active.is-under,
+.proto-video--active.is-priming {
+  opacity: 0;
+}
+
+.proto-video--active.is-priming {
+  transition: none;
 }
 
 .transition-shield {

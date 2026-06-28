@@ -176,6 +176,7 @@ async function openExperience(experienceId, trigger) {
   prepareVideo(activeVideo, experience.active);
   setVideoLayer("idle");
 
+  await seekVideo(idleVideo, 0);
   await playVideo(idleVideo);
 
   const idleReady = await waitForOpeningFrame(idleVideo);
@@ -193,46 +194,21 @@ async function openExperience(experienceId, trigger) {
   videoScreen.classList.remove("is-hidden");
   document.body.classList.add("is-playing");
 
-  activePrimePromise = currentExperience.active ? primeVideoAtStart(activeVideo) : Promise.resolve(false);
+  activePrimePromise = currentExperience.active ? startHiddenActionLoop(activeVideo) : Promise.resolve(false);
 }
 
 async function toggleVideoState() {
-  if (!currentExperience || isSwitching || !currentExperience.active) {
+  if (!currentExperience || isSwitching) {
     return;
   }
 
   isSwitching = true;
-  showTransitionShield(showingActive ? activeVideo : idleVideo);
 
   try {
-    if (showingActive) {
-      await syncIdleToActive();
-      await playVideo(idleVideo);
+    await restartLoopFromStart();
 
-      if (await waitForRevealableFrame(idleVideo)) {
-        setVideoLayer("idle");
-        hideTransitionShield();
-        resetActiveBehindCurrent();
-      } else {
-        hideTransitionShield();
-      }
-    } else {
-      const isActiveReady = await activePrimePromise;
-
-      if (isActiveReady || (await primeVideoAtStart(activeVideo))) {
-        await seekVideo(activeVideo, 0);
-        await playVideo(activeVideo);
-        activePrimePromise = Promise.resolve(false);
-
-        if (await waitForRevealableFrame(activeVideo)) {
-          setVideoLayer("active");
-          hideTransitionShield();
-        } else {
-          hideTransitionShield();
-        }
-      } else {
-        hideTransitionShield();
-      }
+    if (currentExperience.active) {
+      await playActionFromStart();
     }
   } finally {
     isSwitching = false;
@@ -297,15 +273,61 @@ function shouldUseVideoCors(src) {
 }
 
 function setVideoLayer(mode) {
-  const target = mode === "active" ? activeVideo : idleVideo;
-  const previous = mode === "active" ? idleVideo : activeVideo;
-
   showingActive = mode === "active";
 
-  target.classList.remove("is-under");
-  target.classList.add("is-current");
-  previous.classList.remove("is-current");
-  previous.classList.add("is-under");
+  idleVideo.classList.remove("is-under");
+  idleVideo.classList.add("is-current");
+
+  activeVideo.classList.toggle("is-current", showingActive);
+  activeVideo.classList.toggle("is-under", !showingActive);
+
+  if (showingActive) {
+    activeVideo.classList.remove("is-priming");
+  }
+}
+
+async function restartLoopFromStart() {
+  if (!idleVideo.getAttribute("src") || idleVideo.error) {
+    return false;
+  }
+
+  await seekVideo(idleVideo, 0);
+  await playVideo(idleVideo);
+  return waitForDrawableFrame(idleVideo);
+}
+
+async function playActionFromStart() {
+  if (!activeVideo.getAttribute("src") || activeVideo.error) {
+    return false;
+  }
+
+  hideActionForRestart();
+
+  const isActiveReady = await activePrimePromise;
+  activePrimePromise = Promise.resolve(false);
+
+  if (!isActiveReady && !(await waitForMediaData(activeVideo))) {
+    return false;
+  }
+
+  await waitForNextFrame();
+  await seekVideo(activeVideo, 0);
+  await playVideo(activeVideo);
+
+  if (!(await waitForDrawableFrame(activeVideo))) {
+    return false;
+  }
+
+  await waitForNextFrame();
+  setVideoLayer("active");
+  return true;
+}
+
+function hideActionForRestart() {
+  activeVideo.classList.add("is-priming");
+  activeVideo.classList.remove("is-current");
+  activeVideo.classList.add("is-under");
+  showingActive = false;
 }
 
 function showTransitionShield(video) {
@@ -432,6 +454,20 @@ async function primeVideoAtStart(video) {
   }
 
   await seekVideo(video, 0);
+  return waitForDrawableFrame(video);
+}
+
+async function startHiddenActionLoop(video) {
+  if (!video.getAttribute("src") || video.error) {
+    return false;
+  }
+
+  if (!(await waitForMediaData(video))) {
+    return false;
+  }
+
+  await seekVideo(video, 0);
+  await playVideo(video);
   return waitForDrawableFrame(video);
 }
 
