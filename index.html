@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Package Transport Depot</title>
-    <link rel="stylesheet" href="styles.css?v=fit-1">
-    <script src="script.js?v=fit-1" defer></script>
+    <link rel="stylesheet" href="styles.css?v=no-black-1">
+    <script src="script.js?v=no-black-1" defer></script>
   </head>
   <body>
     <div class="app">
@@ -112,6 +112,7 @@
         <section id="videoFrame" class="video-frame" data-family="t08">
           <video id="idleVideo" class="proto-video proto-video--idle is-current" muted playsinline loop preload="auto"></video>
           <video id="activeVideo" class="proto-video proto-video--active" muted playsinline loop preload="auto"></video>
+          <canvas id="transitionShield" class="transition-shield" aria-hidden="true"></canvas>
           <div id="brightnessOverlay" class="brightness-overlay" aria-hidden="true"></div>
 
           <button id="fullscreenButton" class="hotspot hotspot--fullscreen" type="button" aria-label="Pantalla completa"></button>

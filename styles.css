@@ -581,6 +581,20 @@ h1 {
   opacity: 1;
 }
 
+.transition-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.transition-shield.is-active {
+  opacity: 1;
+}
+
 .brightness-overlay {
   position: absolute;
   inset: 0;

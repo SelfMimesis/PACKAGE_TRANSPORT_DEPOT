@@ -45,6 +45,14 @@ se dejaron en `videos/_extras/` por si quieres intercambiarlos despues.
   apaga durante la transicion: el siguiente ya esta preparado debajo y solo
   cambia de capa para colocarse encima, evitando pantallas negras entre
   estados.
+- Durante el cambio, `transitionShield` congela el frame visible en un canvas.
+  El canvas no se retira hasta que el siguiente video tiene un frame visible,
+  por lo que un seek lento, un video sin cargar o un frame negro no deberia
+  mostrar negro al usuario.
+
+> Nota: los MP4 locales estan ignorados por Git. En GitHub Pages deben existir
+> archivos reales en `videos/` o rutas remotas equivalentes; si un MP4 devuelve
+> `404`, el navegador no podra reproducir esa experiencia.
 
 ## Control de brillo
 

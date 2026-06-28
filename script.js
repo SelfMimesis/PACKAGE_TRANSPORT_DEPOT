@@ -42,6 +42,7 @@ const videoScreen = document.querySelector("#videoScreen");
 const videoFrame = document.querySelector("#videoFrame");
 const idleVideo = document.querySelector("#idleVideo");
 const activeVideo = document.querySelector("#activeVideo");
+const transitionShield = document.querySelector("#transitionShield");
 const brightnessOverlay = document.querySelector("#brightnessOverlay");
 const brightnessAll = document.querySelector("#brightnessAll");
 const brightnessTargetInputs = Array.from(document.querySelectorAll("[data-brightness-target]"));
@@ -61,6 +62,8 @@ const DEFAULT_RENDER_SYNC_URL = "https://package-transport-depot.onrender.com";
 const SYNC_POLL_MS = 700;
 const SYNC_PUSH_DEBOUNCE_MS = 120;
 const SYNC_TIMEOUT_MS = 2500;
+const REVEAL_TIMEOUT_MS = 2400;
+const FRAME_SAMPLE_SIZE = 28;
 
 let currentExperience = null;
 let currentExperienceId = null;
@@ -144,6 +147,7 @@ function openExperience(experienceId, trigger) {
   showingActive = false;
   isSwitching = false;
   activePrimePromise = Promise.resolve(false);
+  hideTransitionShield();
 
   applyBrightnessOverlay(experienceId);
 
@@ -170,22 +174,30 @@ async function toggleVideoState() {
   }
 
   isSwitching = true;
+  showTransitionShield(showingActive ? activeVideo : idleVideo);
 
   try {
     if (showingActive) {
       await syncIdleToActive();
       await playVideo(idleVideo);
-      if (await waitForDrawableFrame(idleVideo)) {
-        setVideoLayer("idle");
+      setVideoLayer("idle");
+
+      if (await waitForRevealableFrame(idleVideo)) {
+        hideTransitionShield();
         resetActiveBehindCurrent();
       }
     } else {
       const isActiveReady = await activePrimePromise;
 
       if (isActiveReady || (await primeVideoAtStart(activeVideo))) {
-        setVideoLayer("active");
+        await seekVideo(activeVideo, 0);
         await playVideo(activeVideo);
+        setVideoLayer("active");
         activePrimePromise = Promise.resolve(false);
+
+        if (await waitForRevealableFrame(activeVideo)) {
+          hideTransitionShield();
+        }
       }
     }
   } finally {
@@ -217,6 +229,66 @@ function setVideoLayer(mode) {
   target.classList.add("is-current");
   previous.classList.remove("is-current");
   previous.classList.add("is-under");
+}
+
+function showTransitionShield(video) {
+  if (captureVideoFrame(video)) {
+    transitionShield.classList.add("is-active");
+  }
+}
+
+function hideTransitionShield() {
+  transitionShield.classList.remove("is-active");
+}
+
+function captureVideoFrame(video) {
+  if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+    return false;
+  }
+
+  const rect = transitionShield.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssWidth = Math.max(1, Math.round(rect.width));
+  const cssHeight = Math.max(1, Math.round(rect.height));
+  const pixelWidth = Math.round(cssWidth * dpr);
+  const pixelHeight = Math.round(cssHeight * dpr);
+
+  if (transitionShield.width !== pixelWidth || transitionShield.height !== pixelHeight) {
+    transitionShield.width = pixelWidth;
+    transitionShield.height = pixelHeight;
+  }
+
+  const context = transitionShield.getContext("2d");
+
+  try {
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, cssWidth, cssHeight);
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, cssWidth, cssHeight);
+    drawContainedVideo(context, video, cssWidth, cssHeight);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function drawContainedVideo(context, video, width, height) {
+  const videoRatio = video.videoWidth / video.videoHeight;
+  const frameRatio = width / height;
+  let drawWidth = width;
+  let drawHeight = height;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (videoRatio > frameRatio) {
+    drawHeight = width / videoRatio;
+    offsetY = (height - drawHeight) / 2;
+  } else {
+    drawWidth = height * videoRatio;
+    offsetX = (width - drawWidth) / 2;
+  }
+
+  context.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
 }
 
 function playVideo(video) {
@@ -753,6 +825,82 @@ async function waitForDrawableFrame(video) {
   });
 }
 
+async function waitForRevealableFrame(video) {
+  const startedAt = performance.now();
+
+  while (performance.now() - startedAt < REVEAL_TIMEOUT_MS) {
+    if (video.error) {
+      return false;
+    }
+
+    if (await waitForDrawableFrame(video)) {
+      const visibility = sampleVideoFrameVisibility(video);
+
+      if (visibility === "visible") {
+        return true;
+      }
+
+      if (visibility === "unknown") {
+        return true;
+      }
+    }
+
+    await waitForNextFrame();
+  }
+
+  return false;
+}
+
+function sampleVideoFrameVisibility(video) {
+  if (!video.videoWidth || !video.videoHeight || video.readyState < 2) {
+    return "black";
+  }
+
+  const canvas = sampleVideoFrameVisibility.canvas || document.createElement("canvas");
+  const context = sampleVideoFrameVisibility.context || canvas.getContext("2d", { willReadFrequently: true });
+
+  sampleVideoFrameVisibility.canvas = canvas;
+  sampleVideoFrameVisibility.context = context;
+
+  canvas.width = FRAME_SAMPLE_SIZE;
+  canvas.height = FRAME_SAMPLE_SIZE;
+
+  try {
+    context.drawImage(video, 0, 0, FRAME_SAMPLE_SIZE, FRAME_SAMPLE_SIZE);
+    const pixels = context.getImageData(0, 0, FRAME_SAMPLE_SIZE, FRAME_SAMPLE_SIZE).data;
+    let visiblePixels = 0;
+    let totalLuma = 0;
+    let maxLuma = 0;
+
+    for (let index = 0; index < pixels.length; index += 4) {
+      const luma = (pixels[index] * 0.2126) + (pixels[index + 1] * 0.7152) + (pixels[index + 2] * 0.0722);
+
+      totalLuma += luma;
+      maxLuma = Math.max(maxLuma, luma);
+
+      if (luma > 14) {
+        visiblePixels += 1;
+      }
+    }
+
+    const averageLuma = totalLuma / (FRAME_SAMPLE_SIZE * FRAME_SAMPLE_SIZE);
+
+    if (maxLuma > 28 || visiblePixels > 6 || averageLuma > 5) {
+      return "visible";
+    }
+
+    return "black";
+  } catch {
+    return "unknown";
+  }
+}
+
+function waitForNextFrame() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
 async function syncIdleToActive() {
   if (!Number.isFinite(idleVideo.duration) || idleVideo.duration <= 0) {
     return;
@@ -768,6 +916,7 @@ function closeExperience() {
     return;
   }
 
+  hideTransitionShield();
   resetVideo(idleVideo);
   resetVideo(activeVideo);
   setVideoLayer("idle");
