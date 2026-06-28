@@ -281,7 +281,8 @@ h1 {
 
 .brightness-copy h2,
 .brightness-copy p,
-.select-shell span,
+.checkbox-shell legend,
+.check-row span,
 .range-shell span {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   letter-spacing: 0;
@@ -304,44 +305,125 @@ h1 {
 
 .brightness-controls {
   display: grid;
-  grid-template-columns: minmax(132px, 190px) 1fr;
+  grid-template-columns: minmax(260px, 1.25fr) minmax(220px, 1fr);
   gap: clamp(14px, 2.4vw, 22px);
   align-items: end;
 }
 
-.select-shell,
+.checkbox-shell,
 .range-shell {
   display: grid;
   gap: 10px;
   min-width: 0;
 }
 
-.select-shell span,
+.checkbox-shell {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.checkbox-shell legend,
 .range-shell span {
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 700;
 }
 
-.select-shell select {
-  width: 100%;
-  min-height: 48px;
-  padding: 0 42px 0 14px;
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.check-row {
+  position: relative;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
   color: var(--text);
   cursor: pointer;
-  appearance: none;
   background:
-    linear-gradient(135deg, transparent 0 70%, rgba(103, 214, 242, 0.18) 70%),
     linear-gradient(180deg, rgba(39, 48, 58, 0.96), rgba(10, 13, 18, 0.96));
   border: 1px solid rgba(218, 232, 242, 0.22);
   border-radius: 4px;
-  outline: none;
+  user-select: none;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
-.select-shell select:focus-visible,
+.check-row--all {
+  min-height: 48px;
+  background:
+    linear-gradient(135deg, rgba(103, 214, 242, 0.18), transparent 46%),
+    linear-gradient(180deg, rgba(43, 54, 64, 0.98), rgba(10, 13, 18, 0.98));
+}
+
+.check-row input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin: 0;
+  cursor: pointer;
+  appearance: none;
+  background: rgba(0, 0, 0, 0.38);
+  border: 1px solid rgba(218, 232, 242, 0.36);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.28);
+}
+
+.check-row span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-row:has(input:checked) {
+  background:
+    linear-gradient(135deg, rgba(103, 214, 242, 0.18), transparent 62%),
+    linear-gradient(180deg, rgba(40, 51, 61, 0.98), rgba(12, 16, 21, 0.98));
+  border-color: rgba(103, 214, 242, 0.58);
+  box-shadow: 0 0 20px rgba(103, 214, 242, 0.08);
+}
+
+.check-row input:checked {
+  background:
+    linear-gradient(180deg, var(--cyan), var(--violet));
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+.check-row input:checked::before {
+  display: block;
+  width: 6px;
+  height: 10px;
+  margin: 1px auto 0;
+  content: "";
+  border-right: 2px solid #071014;
+  border-bottom: 2px solid #071014;
+  transform: rotate(40deg);
+}
+
+.check-row:has(input:checked) span {
+  color: var(--text);
+}
+
+.check-row:has(input:focus-visible) {
+  border-color: rgba(103, 214, 242, 0.72);
+  box-shadow: 0 0 0 2px rgba(103, 214, 242, 0.14);
+}
+
 .range-shell input:focus-visible {
   border-color: rgba(103, 214, 242, 0.72);
   box-shadow: 0 0 0 2px rgba(103, 214, 242, 0.14);
+}
+
+.range-shell input:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
 }
 
 .range-shell input {
@@ -517,6 +599,10 @@ h1 {
   .brightness-panel,
   .brightness-controls {
     grid-template-columns: 1fr;
+  }
+
+  .checkbox-grid {
+    grid-template-columns: repeat(2, minmax(96px, 1fr));
   }
 
   .button-grid,

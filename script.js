@@ -35,6 +35,7 @@ const EXPERIENCES = {
     active: "videos/t13-3-active.mp4",
   },
 };
+const EXPERIENCE_IDS = Object.keys(EXPERIENCES);
 
 const homeScreen = document.querySelector("#homeScreen");
 const videoScreen = document.querySelector("#videoScreen");
@@ -42,7 +43,8 @@ const videoFrame = document.querySelector("#videoFrame");
 const idleVideo = document.querySelector("#idleVideo");
 const activeVideo = document.querySelector("#activeVideo");
 const brightnessOverlay = document.querySelector("#brightnessOverlay");
-const brightnessTarget = document.querySelector("#brightnessTarget");
+const brightnessAll = document.querySelector("#brightnessAll");
+const brightnessTargetInputs = Array.from(document.querySelectorAll("[data-brightness-target]"));
 const brightnessRange = document.querySelector("#brightnessRange");
 const brightnessValue = document.querySelector("#brightnessValue");
 const fullscreenButton = document.querySelector("#fullscreenButton");
@@ -51,6 +53,12 @@ const SEEK_TIMEOUT_MS = 1000;
 const FRAME_TIMEOUT_MS = 1500;
 const DEFAULT_BRIGHTNESS = 100;
 const BRIGHTNESS_STORAGE_KEY = "package-transport-depot-brightness";
+const SYNC_URL_STORAGE_KEY = "package-transport-depot-sync-url";
+const SYNC_TOKEN_STORAGE_KEY = "package-transport-depot-sync-token";
+const DEFAULT_RENDER_SYNC_URL = "https://package-transport-depot.onrender.com";
+const SYNC_POLL_MS = 700;
+const SYNC_PUSH_DEBOUNCE_MS = 120;
+const SYNC_TIMEOUT_MS = 2500;
 
 let currentExperience = null;
 let currentExperienceId = null;
@@ -59,8 +67,15 @@ let showingActive = false;
 let isSwitching = false;
 let activePrimePromise = Promise.resolve(false);
 let brightnessLevels = loadBrightnessLevels();
+let syncConfig = loadSyncConfig();
+let lastRemoteVersion = 0;
+let hasReceivedRemoteState = false;
+let pushTimer = 0;
+let pendingPushLevels = {};
+let isApplyingRemoteState = false;
 
 syncBrightnessControl();
+startBrightnessSync();
 
 document.addEventListener("click", (event) => {
   const trigger = event.target.closest("[data-experience]");
@@ -86,12 +101,19 @@ homeButton.addEventListener("click", (event) => {
   closeExperience();
 });
 
-brightnessTarget.addEventListener("change", () => {
+brightnessAll.addEventListener("change", () => {
+  setAllBrightnessTargets(brightnessAll.checked);
   syncBrightnessControl();
 });
 
+brightnessTargetInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    syncBrightnessControl();
+  });
+});
+
 brightnessRange.addEventListener("input", () => {
-  setBrightness(brightnessTarget.value, brightnessRange.value);
+  setBrightness(getSelectedBrightnessTargets(), brightnessRange.value);
 });
 
 document.addEventListener("keydown", (event) => {
@@ -117,7 +139,6 @@ function openExperience(experienceId, trigger) {
   isSwitching = false;
   activePrimePromise = Promise.resolve(false);
 
-  selectBrightnessTarget(experienceId);
   applyBrightnessOverlay(experienceId);
 
   videoFrame.dataset.family = experience.family;
@@ -273,40 +294,71 @@ function resetActiveBehindCurrent() {
   })().catch(() => false);
 }
 
-function selectBrightnessTarget(experienceId) {
-  if (brightnessTarget.value !== experienceId) {
-    brightnessTarget.value = experienceId;
+function syncBrightnessControl() {
+  const selectedTargets = getSelectedBrightnessTargets();
+  const selectedLevels = selectedTargets.map((experienceId) => getBrightness(experienceId));
+  const uniqueLevels = Array.from(new Set(selectedLevels));
+
+  brightnessAll.checked = selectedTargets.length === brightnessTargetInputs.length;
+  brightnessAll.indeterminate = selectedTargets.length > 0 && selectedTargets.length < brightnessTargetInputs.length;
+
+  if (selectedTargets.length === 0) {
+    brightnessRange.disabled = true;
+    brightnessValue.textContent = "--";
+    return;
   }
 
-  syncBrightnessControl();
+  brightnessRange.disabled = false;
+
+  if (uniqueLevels.length === 1) {
+    brightnessRange.value = String(uniqueLevels[0]);
+    brightnessValue.textContent = `${uniqueLevels[0]}%`;
+    return;
+  }
+
+  const averageLevel = Math.round(selectedLevels.reduce((total, level) => total + level, 0) / selectedLevels.length);
+
+  brightnessRange.value = String(averageLevel);
+  brightnessValue.textContent = "MIX";
 }
 
-function syncBrightnessControl() {
-  const experienceId = brightnessTarget.value;
-  const brightness = getBrightness(experienceId);
+function setBrightness(experienceIds, value, options = {}) {
+  if (experienceIds.length === 0) {
+    return;
+  }
 
-  brightnessRange.value = String(brightness);
-  brightnessValue.textContent = `${brightness}%`;
-}
-
-function setBrightness(experienceId, value) {
   const brightness = clampBrightness(value);
+  const nextLevels = { ...brightnessLevels };
+  const changedLevels = {};
 
-  brightnessLevels = {
-    ...brightnessLevels,
-    [experienceId]: brightness,
-  };
+  experienceIds.forEach((experienceId) => {
+    nextLevels[experienceId] = brightness;
+    changedLevels[experienceId] = brightness;
+  });
+
+  brightnessLevels = nextLevels;
 
   saveBrightnessLevels();
+  brightnessRange.value = String(brightness);
+  brightnessValue.textContent = `${brightness}%`;
 
-  if (brightnessTarget.value === experienceId) {
-    brightnessRange.value = String(brightness);
-    brightnessValue.textContent = `${brightness}%`;
+  if (currentExperienceId && experienceIds.includes(currentExperienceId)) {
+    applyBrightnessOverlay(currentExperienceId);
   }
 
-  if (currentExperienceId === experienceId) {
-    applyBrightnessOverlay(experienceId);
+  if (!options.fromRemote) {
+    scheduleBrightnessPush(changedLevels);
   }
+}
+
+function setAllBrightnessTargets(isChecked) {
+  brightnessTargetInputs.forEach((input) => {
+    input.checked = isChecked;
+  });
+}
+
+function getSelectedBrightnessTargets() {
+  return brightnessTargetInputs.filter((input) => input.checked).map((input) => input.value);
 }
 
 function applyBrightnessOverlay(experienceId) {
@@ -356,6 +408,233 @@ function saveBrightnessLevels() {
   } catch {
     // El prototipo sigue funcionando aunque el navegador bloquee localStorage.
   }
+}
+
+function loadSyncConfig() {
+  const params = new URLSearchParams(window.location.search);
+  const querySyncUrl = params.get("sync");
+  const queryToken = params.get("key") || params.get("token");
+  const isSyncDisabled = querySyncUrl === "off";
+  let apiUrl = "";
+  let token = "";
+
+  try {
+    if (isSyncDisabled) {
+      window.localStorage.removeItem(SYNC_URL_STORAGE_KEY);
+    } else if (querySyncUrl) {
+      window.localStorage.setItem(SYNC_URL_STORAGE_KEY, querySyncUrl);
+    }
+
+    if (queryToken) {
+      window.localStorage.setItem(SYNC_TOKEN_STORAGE_KEY, queryToken);
+    }
+
+    apiUrl = isSyncDisabled ? "" : window.localStorage.getItem(SYNC_URL_STORAGE_KEY) || DEFAULT_RENDER_SYNC_URL;
+    token = window.localStorage.getItem(SYNC_TOKEN_STORAGE_KEY) || "";
+  } catch {
+    apiUrl = isSyncDisabled ? "" : querySyncUrl || DEFAULT_RENDER_SYNC_URL;
+    token = queryToken || "";
+  }
+
+  if (params.has("sync") || params.has("key") || params.has("token")) {
+    cleanSyncQueryParams(params);
+  }
+
+  return {
+    apiUrl: normalizeSyncUrl(apiUrl),
+    token,
+  };
+}
+
+function cleanSyncQueryParams(params) {
+  if (!window.history.replaceState) {
+    return;
+  }
+
+  params.delete("sync");
+  params.delete("key");
+  params.delete("token");
+
+  const nextQuery = params.toString();
+  const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+
+  window.history.replaceState({}, document.title, nextUrl);
+}
+
+function normalizeSyncUrl(url) {
+  const trimmedUrl = String(url || "").trim();
+
+  if (!trimmedUrl || trimmedUrl === "off") {
+    return "";
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedUrl);
+    return parsedUrl.origin;
+  } catch {
+    return "";
+  }
+}
+
+function startBrightnessSync() {
+  if (!syncConfig.apiUrl) {
+    return;
+  }
+
+  pullBrightnessFromServer();
+  window.setInterval(pullBrightnessFromServer, SYNC_POLL_MS);
+}
+
+function scheduleBrightnessPush(levels) {
+  if (!syncConfig.apiUrl || isApplyingRemoteState) {
+    return;
+  }
+
+  pendingPushLevels = {
+    ...pendingPushLevels,
+    ...levels,
+  };
+
+  window.clearTimeout(pushTimer);
+  pushTimer = window.setTimeout(pushBrightnessToServer, SYNC_PUSH_DEBOUNCE_MS);
+}
+
+async function pullBrightnessFromServer() {
+  if (!syncConfig.apiUrl || isApplyingRemoteState) {
+    return;
+  }
+
+  try {
+    const response = await fetchWithTimeout(getBrightnessEndpoint(), {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return;
+    }
+
+    const remoteState = await response.json();
+
+    if (typeof remoteState.version !== "number") {
+      return;
+    }
+
+    if (hasReceivedRemoteState && remoteState.version === lastRemoteVersion) {
+      return;
+    }
+
+    hasReceivedRemoteState = true;
+    lastRemoteVersion = remoteState.version;
+    applyRemoteBrightnessLevels(remoteState.levels);
+  } catch {
+    // Si Render esta dormido o sin configurar, el control local sigue activo.
+  }
+}
+
+async function pushBrightnessToServer() {
+  if (!syncConfig.apiUrl) {
+    return;
+  }
+
+  const levelsToPush = { ...pendingPushLevels };
+
+  if (Object.keys(levelsToPush).length === 0) {
+    return;
+  }
+
+  pendingPushLevels = {};
+
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+    };
+
+    if (syncConfig.token) {
+      headers["X-Control-Token"] = syncConfig.token;
+    }
+
+    const response = await fetchWithTimeout(getBrightnessEndpoint(), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ levels: levelsToPush }),
+    });
+
+    if (!response.ok) {
+      pendingPushLevels = {
+        ...levelsToPush,
+        ...pendingPushLevels,
+      };
+      return;
+    }
+
+    const remoteState = await response.json();
+
+    if (typeof remoteState.version === "number") {
+      hasReceivedRemoteState = true;
+      lastRemoteVersion = remoteState.version;
+    }
+  } catch {
+    pendingPushLevels = {
+      ...levelsToPush,
+      ...pendingPushLevels,
+    };
+    // Evita bloquear la interfaz si la red o Render no responde.
+  }
+}
+
+function applyRemoteBrightnessLevels(levels) {
+  const remoteLevels = normalizeBrightnessLevels(levels);
+
+  if (Object.keys(remoteLevels).length === 0) {
+    return;
+  }
+
+  isApplyingRemoteState = true;
+  brightnessLevels = {
+    ...brightnessLevels,
+    ...remoteLevels,
+  };
+
+  saveBrightnessLevels();
+  syncBrightnessControl();
+
+  if (currentExperienceId) {
+    applyBrightnessOverlay(currentExperienceId);
+  }
+
+  isApplyingRemoteState = false;
+}
+
+function normalizeBrightnessLevels(levels) {
+  if (!levels || typeof levels !== "object") {
+    return {};
+  }
+
+  return Object.entries(levels).reduce((validLevels, [experienceId, value]) => {
+    if (!EXPERIENCE_IDS.includes(experienceId)) {
+      return validLevels;
+    }
+
+    validLevels[experienceId] = clampBrightness(value);
+    return validLevels;
+  }, {});
+}
+
+function getBrightnessEndpoint() {
+  return `${syncConfig.apiUrl}/api/brightness`;
+}
+
+function fetchWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
+
+  return fetch(url, {
+    ...options,
+    signal: controller.signal,
+  }).finally(() => {
+    window.clearTimeout(timer);
+  });
 }
 
 function waitForMediaData(video) {

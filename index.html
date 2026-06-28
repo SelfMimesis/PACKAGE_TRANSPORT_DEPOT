@@ -54,18 +54,45 @@
               </div>
 
               <div class="brightness-controls">
-                <label class="select-shell" for="brightnessTarget">
-                  <span>VIDEO</span>
-                  <select id="brightnessTarget" name="brightnessTarget">
-                    <option value="t08-1">T08 1</option>
-                    <option value="t08-2">T08 2</option>
-                    <option value="t08-3">T08 3</option>
-                    <option value="t08-4">T08 4</option>
-                    <option value="t13-1">T13 1</option>
-                    <option value="t13-2">T13 2</option>
-                    <option value="t13-3">T13 3</option>
-                  </select>
-                </label>
+                <fieldset id="brightnessGroup" class="checkbox-shell">
+                  <legend>VIDEOS</legend>
+
+                  <label class="check-row check-row--all">
+                    <input id="brightnessAll" type="checkbox" name="brightnessAll">
+                    <span>TODOS</span>
+                  </label>
+
+                  <div class="checkbox-grid">
+                    <label class="check-row">
+                      <input type="checkbox" name="brightnessTargets" value="t08-1" data-brightness-target checked>
+                      <span>T08 1</span>
+                    </label>
+                    <label class="check-row">
+                      <input type="checkbox" name="brightnessTargets" value="t08-2" data-brightness-target>
+                      <span>T08 2</span>
+                    </label>
+                    <label class="check-row">
+                      <input type="checkbox" name="brightnessTargets" value="t08-3" data-brightness-target>
+                      <span>T08 3</span>
+                    </label>
+                    <label class="check-row">
+                      <input type="checkbox" name="brightnessTargets" value="t08-4" data-brightness-target>
+                      <span>T08 4</span>
+                    </label>
+                    <label class="check-row">
+                      <input type="checkbox" name="brightnessTargets" value="t13-1" data-brightness-target>
+                      <span>T13 1</span>
+                    </label>
+                    <label class="check-row">
+                      <input type="checkbox" name="brightnessTargets" value="t13-2" data-brightness-target>
+                      <span>T13 2</span>
+                    </label>
+                    <label class="check-row">
+                      <input type="checkbox" name="brightnessTargets" value="t13-3" data-brightness-target>
+                      <span>T13 3</span>
+                    </label>
+                  </div>
+                </fieldset>
 
                 <label class="range-shell" for="brightnessRange">
                   <span>INTENSIDAD</span>

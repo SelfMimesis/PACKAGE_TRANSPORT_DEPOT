@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: package-transport-depot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: https://selfmimesis.github.io
+      - key: BRIGHTNESS_CONTROL_TOKEN
+        sync: false
