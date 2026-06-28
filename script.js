@@ -74,6 +74,10 @@ const SYNC_PUSH_DEBOUNCE_MS = 120;
 const SYNC_TIMEOUT_MS = 2500;
 const REVEAL_TIMEOUT_MS = 2400;
 const FRAME_SAMPLE_SIZE = 28;
+const OPEN_TIMEOUT_MS = 6000;
+const VISIBLE_FRAME_STREAK = 2;
+const UNKNOWN_FRAME_GRACE_MS = 900;
+const UNKNOWN_FRAME_MIN_ADVANCE = 0.45;
 
 let currentExperience = null;
 let currentExperienceId = null;
@@ -88,6 +92,7 @@ let hasReceivedRemoteState = false;
 let pushTimer = 0;
 let pendingPushLevels = {};
 let isApplyingRemoteState = false;
+let openRequestId = 0;
 
 syncBrightnessControl();
 startBrightnessSync();
@@ -144,13 +149,16 @@ document.addEventListener("keydown", (event) => {
   closeExperience();
 });
 
-function openExperience(experienceId, trigger) {
+async function openExperience(experienceId, trigger) {
   const experience = EXPERIENCES[experienceId];
 
   if (!experience) {
     return;
   }
 
+  const requestId = openRequestId + 1;
+
+  openRequestId = requestId;
   currentExperience = experience;
   currentExperienceId = experienceId;
   currentButton = trigger;
@@ -168,14 +176,24 @@ function openExperience(experienceId, trigger) {
   prepareVideo(activeVideo, experience.active);
   setVideoLayer("idle");
 
+  await playVideo(idleVideo);
+
+  const idleReady = await waitForOpeningFrame(idleVideo);
+
+  if (requestId !== openRequestId || currentExperienceId !== experienceId) {
+    return;
+  }
+
+  if (!idleReady) {
+    resetOpeningAttempt();
+    return;
+  }
+
   homeScreen.classList.add("is-hidden");
   videoScreen.classList.remove("is-hidden");
   document.body.classList.add("is-playing");
 
-  requestAnimationFrame(async () => {
-    await playVideo(idleVideo);
-    activePrimePromise = currentExperience.active ? primeVideoAtStart(activeVideo) : Promise.resolve(false);
-  });
+  activePrimePromise = currentExperience.active ? primeVideoAtStart(activeVideo) : Promise.resolve(false);
 }
 
 async function toggleVideoState() {
@@ -227,15 +245,17 @@ function prepareVideo(video, src) {
   video.loop = true;
   video.playsInline = true;
   video.preload = "auto";
-  video.crossOrigin = "anonymous";
 
   if (!src) {
+    video.removeAttribute("crossorigin");
     video.removeAttribute("src");
     video.load();
     return;
   }
 
   const resolvedSrc = resolveVideoSource(src);
+
+  setVideoCorsMode(video, resolvedSrc);
 
   if (video.getAttribute("src") !== resolvedSrc) {
     video.src = resolvedSrc;
@@ -254,6 +274,26 @@ function resolveVideoSource(src) {
   }
 
   return `${DEFAULT_RENDER_SYNC_URL}/${src}`;
+}
+
+function setVideoCorsMode(video, src) {
+  if (shouldUseVideoCors(src)) {
+    video.crossOrigin = "anonymous";
+    return;
+  }
+
+  video.removeAttribute("crossorigin");
+}
+
+function shouldUseVideoCors(src) {
+  try {
+    const url = new URL(src, window.location.href);
+    const isHttp = url.protocol === "http:" || url.protocol === "https:";
+
+    return isHttp && url.origin !== window.location.origin;
+  } catch {
+    return false;
+  }
 }
 
 function setVideoLayer(mode) {
@@ -300,8 +340,6 @@ function captureVideoFrame(video) {
   try {
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, cssWidth, cssHeight);
-    context.fillStyle = "#000";
-    context.fillRect(0, 0, cssWidth, cssHeight);
     drawContainedVideo(context, video, cssWidth, cssHeight);
     return true;
   } catch {
@@ -407,6 +445,18 @@ function resetActiveBehindCurrent() {
     await seekVideo(activeVideo, 0);
     return waitForDrawableFrame(activeVideo);
   })().catch(() => false);
+}
+
+function resetOpeningAttempt() {
+  resetVideo(idleVideo);
+  resetVideo(activeVideo);
+  setVideoLayer("idle");
+
+  currentExperience = null;
+  currentExperienceId = null;
+  showingActive = false;
+  isSwitching = false;
+  activePrimePromise = Promise.resolve(false);
 }
 
 function syncBrightnessControl() {
@@ -863,9 +913,19 @@ async function waitForDrawableFrame(video) {
 }
 
 async function waitForRevealableFrame(video) {
-  const startedAt = performance.now();
+  return waitForVisibleFrame(video, REVEAL_TIMEOUT_MS);
+}
 
-  while (performance.now() - startedAt < REVEAL_TIMEOUT_MS) {
+async function waitForOpeningFrame(video) {
+  return waitForVisibleFrame(video, OPEN_TIMEOUT_MS);
+}
+
+async function waitForVisibleFrame(video, timeoutMs) {
+  const startedAt = performance.now();
+  const initialTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+  let visibleFrameCount = 0;
+
+  while (performance.now() - startedAt < timeoutMs) {
     if (video.error) {
       return false;
     }
@@ -874,11 +934,15 @@ async function waitForRevealableFrame(video) {
       const visibility = sampleVideoFrameVisibility(video);
 
       if (visibility === "visible") {
-        return true;
-      }
+        visibleFrameCount += 1;
 
-      if (visibility === "unknown") {
+        if (visibleFrameCount >= VISIBLE_FRAME_STREAK) {
+          return true;
+        }
+      } else if (visibility === "unknown" && hasUnknownFrameFallbackElapsed(video, initialTime, startedAt)) {
         return true;
+      } else {
+        visibleFrameCount = 0;
       }
     }
 
@@ -886,6 +950,14 @@ async function waitForRevealableFrame(video) {
   }
 
   return false;
+}
+
+function hasUnknownFrameFallbackElapsed(video, initialTime, startedAt) {
+  const hasWaited = performance.now() - startedAt >= UNKNOWN_FRAME_GRACE_MS;
+  const currentTime = Number.isFinite(video.currentTime) ? video.currentTime : initialTime;
+  const hasAdvanced = Math.abs(currentTime - initialTime) >= UNKNOWN_FRAME_MIN_ADVANCE;
+
+  return hasWaited && hasAdvanced && !video.paused && video.readyState >= 2;
 }
 
 function sampleVideoFrameVisibility(video) {
@@ -922,7 +994,7 @@ function sampleVideoFrameVisibility(video) {
 
     const averageLuma = totalLuma / (FRAME_SAMPLE_SIZE * FRAME_SAMPLE_SIZE);
 
-    if (maxLuma > 28 || visiblePixels > 6 || averageLuma > 5) {
+    if (maxLuma > 44 || visiblePixels > 24 || averageLuma > 8) {
       return "visible";
     }
 
