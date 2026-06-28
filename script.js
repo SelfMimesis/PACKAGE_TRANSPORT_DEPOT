@@ -47,6 +47,7 @@ const brightnessAll = document.querySelector("#brightnessAll");
 const brightnessTargetInputs = Array.from(document.querySelectorAll("[data-brightness-target]"));
 const brightnessRange = document.querySelector("#brightnessRange");
 const brightnessValue = document.querySelector("#brightnessValue");
+const syncStatus = document.querySelector("#syncStatus");
 const fullscreenButton = document.querySelector("#fullscreenButton");
 const homeButton = document.querySelector("#homeButton");
 const SEEK_TIMEOUT_MS = 1000;
@@ -478,9 +479,11 @@ function normalizeSyncUrl(url) {
 
 function startBrightnessSync() {
   if (!syncConfig.apiUrl) {
+    setSyncStatus("OFF", "offline");
     return;
   }
 
+  setSyncStatus("SYNC...", "syncing");
   pullBrightnessFromServer();
   window.setInterval(pullBrightnessFromServer, SYNC_POLL_MS);
 }
@@ -511,10 +514,12 @@ async function pullBrightnessFromServer() {
     });
 
     if (!response.ok) {
+      setSyncStatus("OFFLINE", "offline");
       return;
     }
 
     const remoteState = await response.json();
+    setSyncStatus("ONLINE", "online");
 
     if (typeof remoteState.version !== "number") {
       return;
@@ -528,6 +533,7 @@ async function pullBrightnessFromServer() {
     lastRemoteVersion = remoteState.version;
     applyRemoteBrightnessLevels(remoteState.levels);
   } catch {
+    setSyncStatus("OFFLINE", "offline");
     // Si Render esta dormido o sin configurar, el control local sigue activo.
   }
 }
@@ -561,6 +567,7 @@ async function pushBrightnessToServer() {
     });
 
     if (!response.ok) {
+      setSyncStatus("OFFLINE", "offline");
       pendingPushLevels = {
         ...levelsToPush,
         ...pendingPushLevels,
@@ -569,12 +576,14 @@ async function pushBrightnessToServer() {
     }
 
     const remoteState = await response.json();
+    setSyncStatus("ONLINE", "online");
 
     if (typeof remoteState.version === "number") {
       hasReceivedRemoteState = true;
       lastRemoteVersion = remoteState.version;
     }
   } catch {
+    setSyncStatus("OFFLINE", "offline");
     pendingPushLevels = {
       ...levelsToPush,
       ...pendingPushLevels,
@@ -635,6 +644,15 @@ function fetchWithTimeout(url, options) {
   }).finally(() => {
     window.clearTimeout(timer);
   });
+}
+
+function setSyncStatus(label, state) {
+  if (!syncStatus) {
+    return;
+  }
+
+  syncStatus.textContent = label;
+  syncStatus.dataset.state = state;
 }
 
 function waitForMediaData(video) {

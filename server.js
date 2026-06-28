@@ -27,6 +27,18 @@ const server = http.createServer(async (request, response) => {
   }
 
   try {
+    if (request.method === "GET" && request.url === "/") {
+      sendJson(response, 200, {
+        ok: true,
+        service: "Package Transport Depot brightness sync",
+        endpoints: {
+          health: "/health",
+          brightness: "/api/brightness",
+        },
+      });
+      return;
+    }
+
     if (request.method === "GET" && request.url === "/health") {
       sendJson(response, 200, { ok: true });
       return;
@@ -43,7 +55,15 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      const body = await readJsonBody(request);
+      let body = {};
+
+      try {
+        body = await readJsonBody(request);
+      } catch {
+        sendJson(response, 400, { error: "Invalid JSON body" });
+        return;
+      }
+
       const levels = normalizeLevels(body.levels);
 
       if (Object.keys(levels).length === 0) {

@@ -303,6 +303,27 @@ h1 {
   text-shadow: 0 0 18px rgba(103, 214, 242, 0.2);
 }
 
+.sync-status {
+  width: fit-content;
+  padding: 5px 8px;
+  color: var(--muted) !important;
+  font-size: 0.72rem !important;
+  line-height: 1;
+  border: 1px solid rgba(218, 232, 242, 0.18);
+  border-radius: 3px;
+  text-shadow: none !important;
+}
+
+.sync-status[data-state="online"] {
+  color: var(--cyan) !important;
+  border-color: rgba(103, 214, 242, 0.42);
+}
+
+.sync-status[data-state="offline"] {
+  color: var(--danger) !important;
+  border-color: rgba(255, 106, 77, 0.42);
+}
+
 .brightness-controls {
   display: grid;
   grid-template-columns: minmax(260px, 1.25fr) minmax(220px, 1fr);
