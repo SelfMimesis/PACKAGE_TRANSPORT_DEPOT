@@ -48,6 +48,7 @@ const brightnessTargetInputs = Array.from(document.querySelectorAll("[data-brigh
 const brightnessRange = document.querySelector("#brightnessRange");
 const brightnessValue = document.querySelector("#brightnessValue");
 const syncStatus = document.querySelector("#syncStatus");
+const syncCheckButton = document.querySelector("#syncCheckButton");
 const fullscreenButton = document.querySelector("#fullscreenButton");
 const homeButton = document.querySelector("#homeButton");
 const SEEK_TIMEOUT_MS = 1000;
@@ -115,6 +116,10 @@ brightnessTargetInputs.forEach((input) => {
 
 brightnessRange.addEventListener("input", () => {
   setBrightness(getSelectedBrightnessTargets(), brightnessRange.value);
+});
+
+syncCheckButton.addEventListener("click", () => {
+  checkSyncConnection();
 });
 
 document.addEventListener("keydown", (event) => {
@@ -486,6 +491,16 @@ function startBrightnessSync() {
   setSyncStatus("SYNC...", "syncing");
   pullBrightnessFromServer();
   window.setInterval(pullBrightnessFromServer, SYNC_POLL_MS);
+}
+
+async function checkSyncConnection() {
+  if (!syncConfig.apiUrl) {
+    setSyncStatus("OFF", "offline");
+    return;
+  }
+
+  setSyncStatus("CHECK...", "syncing");
+  await pullBrightnessFromServer();
 }
 
 function scheduleBrightnessPush(levels) {

@@ -105,6 +105,8 @@ https://selfmimesis.github.io/PACKAGE_TRANSPORT_DEPOT/?sync=off
 Para controlar desde una tablet, abre la misma pagina en la tablet y en la
 pantalla del prototipo. La tablet envia los cambios al servidor; las pantallas
 abiertas reciben el brillo por polling y aplican la capa negra al video activo.
+El indicador de la home muestra `ONLINE`, `SYNC...` u `OFFLINE`; el boton
+`CHECK` fuerza una comprobacion manual del backend.
 
 ## Ratios
 
