@@ -3,7 +3,7 @@ services:
     name: package-transport-depot
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: git lfs install && git lfs pull && npm install
     startCommand: npm start
     envVars:
       - key: ALLOWED_ORIGINS

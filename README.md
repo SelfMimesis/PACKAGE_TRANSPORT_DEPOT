@@ -8,39 +8,40 @@ librerias externas ni dependencias.
 - `index.html`: estructura de la home y pantalla de video.
 - `styles.css`: estetica oscura, responsive, paneles tecnicos y ratios de video.
 - `script.js`: mapa de experiencias, precarga, fullscreen y cambio idle/active.
-- `videos/`: clips normalizados para que sea facil reemplazarlos.
+- `videos/`: clips normalizados, versionados con Git LFS y servidos desde Render.
 
 ## Mapa de videos
 
-Cada boton de la home apunta a dos clips:
+Cada boton de la home apunta a su carpeta normalizada. Cuando existe `Loop` y
+`Action`, `Loop` es `idle` y `Action` es `active`. Si una carpeta solo trae un
+MP4, se reproduce solo como loop.
 
 | Boton | Idle | Active |
 | --- | --- | --- |
 | T08 1 | `videos/t08-1-idle.mp4` | `videos/t08-1-active.mp4` |
 | T08 2 | `videos/t08-2-idle.mp4` | `videos/t08-2-active.mp4` |
 | T08 3 | `videos/t08-3-idle.mp4` | `videos/t08-3-active.mp4` |
-| T08 4 | `videos/t08-4-idle.mp4` | `videos/t08-4-active.mp4` |
+| T08 4 | `videos/t08-4-idle.mp4` | - |
 | T13 1 | `videos/t13-1-idle.mp4` | `videos/t13-1-active.mp4` |
-| T13 2 | `videos/t13-2-idle.mp4` | `videos/t13-2-active.mp4` |
+| T13 2 | `videos/t13-2-idle.mp4` | - |
 | T13 3 | `videos/t13-3-idle.mp4` | `videos/t13-3-active.mp4` |
+| T13 4 | `videos/t13-4-idle.mp4` | - |
+| T13 5 | `videos/t13-5-idle.mp4` | - |
 
-El ZIP traia clips `Loop` y `Action` claros para T08 1-3 y T13 1-2. Para
-T08 4 y T13 3 solo habia un clip principal, asi que el archivo `active` se ha
-creado como hardlink al mismo video para que el prototipo mantenga la misma
-estructura y no duplique peso en disco.
-
-Los clips extra del ZIP que no estaban asignados a una interaccion de la home
-se dejaron en `videos/_extras/` por si quieres intercambiarlos despues.
+T13 tiene 5 botones porque el ZIP trae 5 carpetas/experiencias diferentes:
+`T13_L_01`, `T13_L_02`, `T13_P_01`, `T13_P_02` y `Desk T13`.
 
 ## Comportamiento
 
 - La home muestra `Package Transport Depot`, con secciones `T08` y `T13`.
 - Al pulsar un boton se abre su experiencia de video.
 - El video `idle` empieza visible y en loop.
-- Al tocar el video, se muestra `active`; este se reinicia desde `0` en cada
-  accion.
+- Al tocar el video, si existe `active`, se muestra encima y se reinicia desde
+  `0` en cada accion.
 - Al volver a tocar, regresa a `idle` e intenta sincronizarlo con el tiempo de
   `active`.
+- Si la experiencia solo tiene `idle`, el toque no cambia de video y el loop
+  continua.
 - Los dos elementos `<video>` permanecen superpuestos. El video actual no se
   apaga durante la transicion: el siguiente ya esta preparado debajo y solo
   cambia de capa para colocarse encima, evitando pantallas negras entre
@@ -50,9 +51,8 @@ se dejaron en `videos/_extras/` por si quieres intercambiarlos despues.
   por lo que un seek lento, un video sin cargar o un frame negro no deberia
   mostrar negro al usuario.
 
-> Nota: los MP4 locales estan ignorados por Git. En GitHub Pages deben existir
-> archivos reales en `videos/` o rutas remotas equivalentes; si un MP4 devuelve
-> `404`, el navegador no podra reproducir esa experiencia.
+> Nota: GitHub Pages carga la interfaz, pero los MP4 se sirven desde Render en
+> `https://package-transport-depot.onrender.com/videos/...`.
 
 ## Control de brillo
 
@@ -76,7 +76,7 @@ incluido en `server.js`.
 ### Backend
 
 1. Crea un Web Service en Render conectado a este repositorio.
-2. Usa `npm install` como build command.
+2. Usa `git lfs install && git lfs pull && npm install` como build command.
 3. Usa `npm start` como start command.
 4. Configura estas variables de entorno:
    - `ALLOWED_ORIGINS=https://selfmimesis.github.io`
@@ -87,6 +87,7 @@ El endpoint principal queda en:
 - `GET /api/brightness`: lee el brillo actual.
 - `POST /api/brightness`: actualiza brillos. Si `BRIGHTNESS_CONTROL_TOKEN`
   esta configurado, debe enviarse en el header `X-Control-Token`.
+- `GET /videos/{archivo}.mp4`: sirve los videos con soporte de `Range`.
 
 ### Frontend
 

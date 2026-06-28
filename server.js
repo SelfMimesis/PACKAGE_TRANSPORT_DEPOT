@@ -1,4 +1,6 @@
 const http = require("node:http");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const PORT = Number(process.env.PORT || 10000);
 const CONTROL_TOKEN = process.env.BRIGHTNESS_CONTROL_TOKEN || "";
@@ -7,9 +9,10 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "https://selfmimesis.git
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-const EXPERIENCE_IDS = ["t08-1", "t08-2", "t08-3", "t08-4", "t13-1", "t13-2", "t13-3"];
+const EXPERIENCE_IDS = ["t08-1", "t08-2", "t08-3", "t08-4", "t13-1", "t13-2", "t13-3", "t13-4", "t13-5"];
 const DEFAULT_BRIGHTNESS = 100;
 const MAX_BODY_BYTES = 16384;
+const VIDEOS_DIR = path.join(__dirname, "videos");
 
 let state = {
   levels: Object.fromEntries(EXPERIENCE_IDS.map((id) => [id, DEFAULT_BRIGHTNESS])),
@@ -34,8 +37,14 @@ const server = http.createServer(async (request, response) => {
         endpoints: {
           health: "/health",
           brightness: "/api/brightness",
+          videos: "/videos/{file}.mp4",
         },
       });
+      return;
+    }
+
+    if ((request.method === "GET" || request.method === "HEAD") && request.url.startsWith("/videos/")) {
+      serveVideo(request, response);
       return;
     }
 
@@ -102,6 +111,73 @@ function setCorsHeaders(request, response) {
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Control-Token");
   response.setHeader("Vary", "Origin");
+}
+
+function serveVideo(request, response) {
+  const url = new URL(request.url, "http://localhost");
+  const requestedName = path.basename(decodeURIComponent(url.pathname));
+
+  if (!/^[a-z0-9-]+\.mp4$/i.test(requestedName)) {
+    sendJson(response, 400, { error: "Invalid video path" });
+    return;
+  }
+
+  const videoPath = path.join(VIDEOS_DIR, requestedName);
+
+  if (!videoPath.startsWith(VIDEOS_DIR) || !fs.existsSync(videoPath)) {
+    sendJson(response, 404, { error: "Video not found" });
+    return;
+  }
+
+  const stat = fs.statSync(videoPath);
+  const range = request.headers.range;
+  const headers = {
+    "Content-Type": "video/mp4",
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "public, max-age=31536000, immutable",
+    "Cross-Origin-Resource-Policy": "cross-origin",
+  };
+
+  if (!range) {
+    response.writeHead(200, {
+      ...headers,
+      "Content-Length": stat.size,
+    });
+
+    if (request.method === "HEAD") {
+      response.end();
+      return;
+    }
+
+    fs.createReadStream(videoPath).pipe(response);
+    return;
+  }
+
+  const [startPart, endPart] = range.replace(/bytes=/, "").split("-");
+  const start = Number.parseInt(startPart, 10);
+  const end = endPart ? Number.parseInt(endPart, 10) : stat.size - 1;
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= stat.size || end >= stat.size || start > end) {
+    response.writeHead(416, {
+      ...headers,
+      "Content-Range": `bytes */${stat.size}`,
+    });
+    response.end();
+    return;
+  }
+
+  response.writeHead(206, {
+    ...headers,
+    "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+    "Content-Length": end - start + 1,
+  });
+
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
+
+  fs.createReadStream(videoPath, { start, end }).pipe(response);
 }
 
 function isAuthorized(request) {

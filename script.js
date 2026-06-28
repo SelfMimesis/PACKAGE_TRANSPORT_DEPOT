@@ -17,7 +17,7 @@ const EXPERIENCES = {
   "t08-4": {
     family: "t08",
     idle: "videos/t08-4-idle.mp4",
-    active: "videos/t08-4-active.mp4",
+    active: null,
   },
   "t13-1": {
     family: "t13",
@@ -27,12 +27,22 @@ const EXPERIENCES = {
   "t13-2": {
     family: "t13",
     idle: "videos/t13-2-idle.mp4",
-    active: "videos/t13-2-active.mp4",
+    active: null,
   },
   "t13-3": {
     family: "t13",
     idle: "videos/t13-3-idle.mp4",
     active: "videos/t13-3-active.mp4",
+  },
+  "t13-4": {
+    family: "t13",
+    idle: "videos/t13-4-idle.mp4",
+    active: null,
+  },
+  "t13-5": {
+    family: "t13",
+    idle: "videos/t13-5-idle.mp4",
+    active: null,
   },
 };
 const EXPERIENCE_IDS = Object.keys(EXPERIENCES);
@@ -164,12 +174,12 @@ function openExperience(experienceId, trigger) {
 
   requestAnimationFrame(async () => {
     await playVideo(idleVideo);
-    activePrimePromise = primeVideoAtStart(activeVideo);
+    activePrimePromise = currentExperience.active ? primeVideoAtStart(activeVideo) : Promise.resolve(false);
   });
 }
 
 async function toggleVideoState() {
-  if (!currentExperience || isSwitching) {
+  if (!currentExperience || isSwitching || !currentExperience.active) {
     return;
   }
 
@@ -180,11 +190,13 @@ async function toggleVideoState() {
     if (showingActive) {
       await syncIdleToActive();
       await playVideo(idleVideo);
-      setVideoLayer("idle");
 
       if (await waitForRevealableFrame(idleVideo)) {
+        setVideoLayer("idle");
         hideTransitionShield();
         resetActiveBehindCurrent();
+      } else {
+        hideTransitionShield();
       }
     } else {
       const isActiveReady = await activePrimePromise;
@@ -192,12 +204,16 @@ async function toggleVideoState() {
       if (isActiveReady || (await primeVideoAtStart(activeVideo))) {
         await seekVideo(activeVideo, 0);
         await playVideo(activeVideo);
-        setVideoLayer("active");
         activePrimePromise = Promise.resolve(false);
 
         if (await waitForRevealableFrame(activeVideo)) {
+          setVideoLayer("active");
+          hideTransitionShield();
+        } else {
           hideTransitionShield();
         }
+      } else {
+        hideTransitionShield();
       }
     }
   } finally {
@@ -211,12 +227,33 @@ function prepareVideo(video, src) {
   video.loop = true;
   video.playsInline = true;
   video.preload = "auto";
+  video.crossOrigin = "anonymous";
 
-  if (video.getAttribute("src") !== src) {
-    video.src = src;
+  if (!src) {
+    video.removeAttribute("src");
+    video.load();
+    return;
+  }
+
+  const resolvedSrc = resolveVideoSource(src);
+
+  if (video.getAttribute("src") !== resolvedSrc) {
+    video.src = resolvedSrc;
   }
 
   video.load();
+}
+
+function resolveVideoSource(src) {
+  if (/^https?:\/\//i.test(src) || window.location.protocol === "file:") {
+    return src;
+  }
+
+  if (window.location.hostname.endsWith("onrender.com")) {
+    return src;
+  }
+
+  return `${DEFAULT_RENDER_SYNC_URL}/${src}`;
 }
 
 function setVideoLayer(mode) {
