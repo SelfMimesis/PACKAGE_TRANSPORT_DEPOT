@@ -42,8 +42,9 @@ se dejaron en `videos/_extras/` por si quieres intercambiarlos despues.
 - Al volver a tocar, regresa a `idle` e intenta sincronizarlo con el tiempo de
   `active`.
 - Los dos elementos `<video>` permanecen superpuestos. El video actual no se
-  apaga durante la transicion: el siguiente se coloca encima y entra con un
-  fundido de `0.2s`, evitando pantallas negras entre estados.
+  apaga durante la transicion: el siguiente ya esta preparado debajo y solo
+  cambia de capa para colocarse encima, evitando pantallas negras entre
+  estados.
 
 ## Control de brillo
 

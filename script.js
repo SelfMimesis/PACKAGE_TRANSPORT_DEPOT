@@ -47,7 +47,6 @@ const brightnessRange = document.querySelector("#brightnessRange");
 const brightnessValue = document.querySelector("#brightnessValue");
 const fullscreenButton = document.querySelector("#fullscreenButton");
 const homeButton = document.querySelector("#homeButton");
-const CROSSFADE_MS = 200;
 const SEEK_TIMEOUT_MS = 1000;
 const FRAME_TIMEOUT_MS = 1500;
 const DEFAULT_BRIGHTNESS = 100;
@@ -58,6 +57,7 @@ let currentExperienceId = null;
 let currentButton = null;
 let showingActive = false;
 let isSwitching = false;
+let activePrimePromise = Promise.resolve(false);
 let brightnessLevels = loadBrightnessLevels();
 
 syncBrightnessControl();
@@ -115,6 +115,7 @@ function openExperience(experienceId, trigger) {
   currentButton = trigger;
   showingActive = false;
   isSwitching = false;
+  activePrimePromise = Promise.resolve(false);
 
   selectBrightnessTarget(experienceId);
   applyBrightnessOverlay(experienceId);
@@ -124,15 +125,15 @@ function openExperience(experienceId, trigger) {
 
   prepareVideo(idleVideo, experience.idle);
   prepareVideo(activeVideo, experience.active);
-  setVideoLayer("idle", { instant: true });
+  setVideoLayer("idle");
 
   homeScreen.classList.add("is-hidden");
   videoScreen.classList.remove("is-hidden");
   document.body.classList.add("is-playing");
 
-  requestAnimationFrame(() => {
-    playVideo(idleVideo);
-    playVideo(activeVideo);
+  requestAnimationFrame(async () => {
+    await playVideo(idleVideo);
+    activePrimePromise = primeVideoAtStart(activeVideo);
   });
 }
 
@@ -148,13 +149,16 @@ async function toggleVideoState() {
       await syncIdleToActive();
       await playVideo(idleVideo);
       if (await waitForDrawableFrame(idleVideo)) {
-        await setVideoLayer("idle");
+        setVideoLayer("idle");
+        resetActiveBehindCurrent();
       }
     } else {
-      await seekVideo(activeVideo, 0);
-      await playVideo(activeVideo);
-      if (await waitForDrawableFrame(activeVideo)) {
-        await setVideoLayer("active");
+      const isActiveReady = await activePrimePromise;
+
+      if (isActiveReady || (await primeVideoAtStart(activeVideo))) {
+        setVideoLayer("active");
+        await playVideo(activeVideo);
+        activePrimePromise = Promise.resolve(false);
       }
     }
   } finally {
@@ -176,57 +180,16 @@ function prepareVideo(video, src) {
   video.load();
 }
 
-function setVideoLayer(mode, options = {}) {
+function setVideoLayer(mode) {
   const target = mode === "active" ? activeVideo : idleVideo;
   const previous = mode === "active" ? idleVideo : activeVideo;
-  const isInstant = Boolean(options.instant);
 
   showingActive = mode === "active";
 
-  target.classList.remove("is-current", "is-next", "is-visible");
-  previous.classList.remove("is-next", "is-visible");
-
-  if (isInstant) {
-    previous.classList.remove("is-current");
-    target.classList.add("is-current");
-    return Promise.resolve();
-  }
-
-  previous.classList.add("is-current");
-  target.classList.add("is-next");
-  target.offsetWidth;
-
-  return new Promise((resolve) => {
-    let resolved = false;
-    let timer = 0;
-
-    const finish = () => {
-      if (resolved) {
-        return;
-      }
-
-      resolved = true;
-      window.clearTimeout(timer);
-      target.removeEventListener("transitionend", handleTransitionEnd);
-      target.classList.remove("is-next", "is-visible");
-      target.classList.add("is-current");
-      previous.classList.remove("is-current");
-      resolve();
-    };
-
-    const handleTransitionEnd = (event) => {
-      if (event.target === target && event.propertyName === "opacity") {
-        finish();
-      }
-    };
-
-    timer = window.setTimeout(finish, CROSSFADE_MS + 80);
-    target.addEventListener("transitionend", handleTransitionEnd);
-
-    requestAnimationFrame(() => {
-      target.classList.add("is-visible");
-    });
-  });
+  target.classList.remove("is-under");
+  target.classList.add("is-current");
+  previous.classList.remove("is-current");
+  previous.classList.add("is-under");
 }
 
 function playVideo(video) {
@@ -281,6 +244,33 @@ function getSafeTime(video, time) {
   }
 
   return Math.min(Math.max(0, time), Math.max(0, video.duration - 0.05));
+}
+
+async function primeVideoAtStart(video) {
+  if (!video.getAttribute("src") || video.error) {
+    return false;
+  }
+
+  video.pause();
+
+  if (!(await waitForMediaData(video))) {
+    return false;
+  }
+
+  await seekVideo(video, 0);
+  return waitForDrawableFrame(video);
+}
+
+function resetActiveBehindCurrent() {
+  activePrimePromise = (async () => {
+    if (!currentExperience || !activeVideo.getAttribute("src")) {
+      return false;
+    }
+
+    activeVideo.pause();
+    await seekVideo(activeVideo, 0);
+    return waitForDrawableFrame(activeVideo);
+  })().catch(() => false);
 }
 
 function selectBrightnessTarget(experienceId) {
@@ -368,11 +358,9 @@ function saveBrightnessLevels() {
   }
 }
 
-function waitForDrawableFrame(video) {
+function waitForMediaData(video) {
   if (video.readyState >= 2) {
-    return new Promise((resolve) => {
-      requestAnimationFrame(() => resolve(true));
-    });
+    return Promise.resolve(true);
   }
 
   if (video.error) {
@@ -392,6 +380,7 @@ function waitForDrawableFrame(video) {
       window.clearTimeout(timer);
       video.removeEventListener("loadeddata", finish);
       video.removeEventListener("canplay", finish);
+      video.removeEventListener("canplaythrough", finish);
       video.removeEventListener("error", fail);
       resolve(video.readyState >= 2 && !video.error);
     };
@@ -405,6 +394,7 @@ function waitForDrawableFrame(video) {
       window.clearTimeout(timer);
       video.removeEventListener("loadeddata", finish);
       video.removeEventListener("canplay", finish);
+      video.removeEventListener("canplaythrough", finish);
       video.removeEventListener("error", fail);
       resolve(false);
     };
@@ -412,7 +402,42 @@ function waitForDrawableFrame(video) {
     timer = window.setTimeout(finish, FRAME_TIMEOUT_MS);
     video.addEventListener("loadeddata", finish);
     video.addEventListener("canplay", finish);
+    video.addEventListener("canplaythrough", finish);
     video.addEventListener("error", fail);
+  });
+}
+
+async function waitForDrawableFrame(video) {
+  if (!(await waitForMediaData(video))) {
+    return false;
+  }
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    let timer = 0;
+
+    const finish = () => {
+      if (resolved) {
+        return;
+      }
+
+      resolved = true;
+      window.clearTimeout(timer);
+      resolve(video.readyState >= 2 && !video.error);
+    };
+
+    timer = window.setTimeout(finish, FRAME_TIMEOUT_MS);
+
+    if (typeof video.requestVideoFrameCallback === "function") {
+      try {
+        video.requestVideoFrameCallback(finish);
+        requestAnimationFrame(() => requestAnimationFrame(finish));
+      } catch {
+        requestAnimationFrame(() => requestAnimationFrame(finish));
+      }
+    } else {
+      requestAnimationFrame(() => requestAnimationFrame(finish));
+    }
   });
 }
 
@@ -423,6 +448,7 @@ async function syncIdleToActive() {
 
   const targetTime = activeVideo.currentTime % idleVideo.duration;
   await seekVideo(idleVideo, targetTime);
+  await waitForDrawableFrame(idleVideo);
 }
 
 function closeExperience() {
@@ -432,12 +458,13 @@ function closeExperience() {
 
   resetVideo(idleVideo);
   resetVideo(activeVideo);
-  setVideoLayer("idle", { instant: true });
+  setVideoLayer("idle");
 
   currentExperience = null;
   currentExperienceId = null;
   showingActive = false;
   isSwitching = false;
+  activePrimePromise = Promise.resolve(false);
 
   videoScreen.classList.add("is-hidden");
   homeScreen.classList.remove("is-hidden");

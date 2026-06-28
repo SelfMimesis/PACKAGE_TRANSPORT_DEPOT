@@ -426,8 +426,9 @@ h1 {
   background: #000;
   opacity: 1;
   pointer-events: none;
-  transition: opacity 200ms ease;
-  will-change: opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .proto-video.is-current {
@@ -435,12 +436,8 @@ h1 {
   opacity: 1;
 }
 
-.proto-video.is-next {
-  z-index: 3;
-  opacity: 0;
-}
-
-.proto-video.is-next.is-visible {
+.proto-video.is-under {
+  z-index: 1;
   opacity: 1;
 }
 
